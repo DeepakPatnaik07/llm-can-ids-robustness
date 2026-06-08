@@ -1,0 +1,28 @@
+# Core ML
+torch==2.4.1
+transformers==4.44.2
+peft==0.12.0
+accelerate==0.34.2
+datasets==2.21.0
+
+# Explainability
+shap==0.46.0
+
+# Similarity and evaluation
+sentence-transformers==3.1.1
+rouge-score==0.1.2
+bert-score==0.3.13
+
+# Data
+pandas==2.2.2
+numpy==1.26.4
+scipy==1.13.1
+scikit-learn==1.5.1
+
+# Visualization
+matplotlib==3.9.2
+seaborn==0.13.2
+
+# Utilities
+tqdm==4.66.5
+nltk==3.9.1
