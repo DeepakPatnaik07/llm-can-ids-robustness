@@ -1,148 +1,90 @@
-# LLM-based CAN Bus IDS Explanation Robustness Pipeline
+# LLM Explanation Robustness for CAN Intrusion Detection
 
-**Paper:** LLM-based CAN Bus IDS Explanation Robustness Pipeline  
-**Venue:** IEEE ICIDeA 2026  
-**Author:** Deepak Patnaik  
-**Mentor:** Swagat Das (VCU PhD, Transformer-based CAN anomaly detection)
+**Status:** Independent research prototype / working manuscript — **unpublished**. No peer-reviewed acceptance or conference publication is claimed.  
+**Researcher:** Deepak Patnaik  
+**Research question:** Can an intrusion-detection label remain stable while an LLM-generated explanation changes under small telemetry or prompt perturbations?
 
----
+This repository documents experiments on explanation consistency using automotive CAN-bus telemetry, a SecureBERT-based classifier and downstream language-model explainers. It is **not** a deployed intrusion-detection product. Read the [reproduction guide](REPRODUCIBILITY.md) and [methodological limitations](LIMITATIONS.md) before using the results.
 
-## Research Question
+> **Evidence status:** Numerical results below are transcribed from *stored notebook outputs*. They were not independently rerun or validated during this documentation update. Embedding similarity **does not** establish factual correctness or operational harm.
 
-> How consistent are LLM-based CAN IDS explanations under lightweight adversarial perturbations, even when attack classification remains correct?
+## Experimental design
 
----
+- **Datasets:** HCRL Car-Hacking (NORMAL, DOS, FUZZY, GEAR, RPM) and ROAD (AMBIENT, ACCELERATOR, FUZZING, SPEEDOMETER, CORRELATED).
+- **Input:** CAN telemetry serialized in 14-frame windows.
+- **Models:** SecureBERT with a LoRA-based classification setup; Qwen2.5-1.5B-Instruct for the principal explanation experiment; exploratory use of Mistral-7B-Instruct-v0.2 and TinyLlama-1.1B.
+- **Baseline:** HCRL benchmark: 500 windows/class (2,500 total). Principal explanation analysis: 500 baseline windows (100/class), each receiving P1–P5 (2,500 paired perturbation records). ROAD notebook: 50 windows/class (250 total), **not** 250/class.
+- **Metrics:** SentenceTransformer embedding cosine similarity, thematic keyword checks and qualitative error analysis. These are proxies, not validated evidence-faithfulness measures.
 
-## Architecture
+| ID | Perturbation | Intervention |
+| --- | --- | --- |
+| P1 | Payload mutation | Change a byte in a middle CAN frame |
+| P2 | Benign frame insertion | Insert normal traffic, retaining window length |
+| P3 | Frame reorder | Swap neighboring frames |
+| P4 | Confidence change | Lower the confidence conveyed to the explainer |
+| P5 | Semantic steering | Add a topic-directing prompt instruction |
+| P6 | False context injection | Add benign-sounding narrative context; **separate exploratory runs** |
 
-    CAN Bus Telemetry
-          |
-          v
-    SecureBERT (LoRA fine-tuned, 125M params)
-          |  classification + confidence
-          v
-    LLM Explainer
-      - Qwen2.5-1.5B-Instruct  (primary)
-      - Mistral-7B-Instruct-v0.2  (comparison)
-          |
-          v
-    Explanation Drift Analysis
+The actual principal P1–P5 experiment uses functions in `notebooks/08_section10_perturbations.ipynb`. The standalone `src/perturbations.py` is **not behaviorally equivalent**: its P2 inserts a *synthetic randomly generated* frame rather than sampled genuine normal traffic, and its P5 text is generic rather than class-specific. Do not treat it as a drop-in replication of the notebook.
 
----
+## Recorded HCRL/Qwen results (P1–P5)
 
-## Datasets
+The saved output of `notebooks/09_section11_metrics.ipynb` provides these **descriptive** mean similarities between paired explanations:
 
-| Dataset | Classes | Windows |
-|---|---|---|
-| HCRL Car-Hacking | NORMAL, DOS, FUZZY, GEAR, RPM | 500 per class |
-| ROAD | AMBIENT, ACCELERATOR, FUZZING, SPEEDOMETER, CORRELATED | 250 per class |
+| Perturbation | Paired records | Mean embedding cosine similarity |
+| --- | ---: | ---: |
+| P1: Payload mutation | 500 | 0.738 |
+| P2: Benign insertion | 500 | 0.785 |
+| P3: Frame reorder | 500 | 0.801 |
+| P4: Confidence change | 500 | 0.776 |
+| P5: Semantic steering | 500 | 0.753 |
+| **All five (pooled)** | **2,500** | **0.771** |
 
----
+The notebook's reported "100% prediction stability" is computed as **equality of the LLM's baseline versus perturbed classification strings**. It is **not** a rerun of SecureBERT on every perturbed sample, and it does not establish 100% ground-truth attack-class accuracy. Likewise, a cosine similarity of 0.771 must not be presented as "77.1% of semantic content preserved."
 
-## Perturbation Types
+These are paired comparisons reusing baseline windows and potentially temporally related underlying examples; statistical tests that presume all records are independent require further scrutiny. See [LIMITATIONS.md](LIMITATIONS.md).
 
-| ID | Name | Layer | Description |
-|---|---|---|---|
-| P1 | Payload Mutation | Data | One byte mutated by plus or minus 1 in middle frame |
-| P2 | Benign Frame Insertion | Context | One ambient frame inserted into window |
-| P3 | Frame Reorder | Temporal | Two adjacent frames swapped |
-| P4 | Confidence Reduction | Prompt | Classifier confidence reduced from 1.000 to 0.623 |
-| P5 | Semantic Steering | Prompt | One steering sentence added to prompt |
-| P6 | False Context Injection | Prompt | Plausible benign maintenance narrative injected |
+### Additional, exploratory experiments
 
----
+Separate notebooks contain SHAP comparisons, repeated-seed checks, heuristic grounding analysis, Mistral runs, ROAD samples and P6 false-context testing. The original README's **49.1% "operationally harmful"** assertion, its **P6 contradictory classification summary**, and definitive explanations of SHAP/model stability are **not retained as verified headline findings**: the repository does not currently provide an auditable, consolidated protocol and underlying outputs to support those statements consistently.
 
-## Key Findings
+## Code and notebook map
 
-- 49.1% of lightweight perturbations cause operationally harmful explanation drift
-- SHAP dissociation confirmed: classifier SHAP similarity 0.995-1.000 vs explanation similarity 0.748-0.753
-- Attack class explains 49% of variance in drift; perturbation type explains only 3.7%
-- P6 false context injection caused Mistral-7B to reclassify 100% of DOS attacks as NORMAL
-- Qwen-1.5B showed output collapse on DOS payloads under P6; Mistral-7B showed semantic vulnerability
-- Cross-dataset validation on ROAD confirmed prompt-layer vulnerability transcends dataset complexity
-- Seed stability confirmed (ANOVA p=0.070, spread=0.028)
-- Deterministic generation (do_sample=False) — zero stochastic variance
+| File or directory | Role |
+| --- | --- |
+| `notebooks/00_environment_check.ipynb` through `notebooks/07_section9a_securebert_finetune.ipynb` | Data processing, windowing, benchmark, SecureBERT setup |
+| `notebooks/08_section10_perturbations.ipynb` | Primary P1–P5 test dataset construction |
+| `kaggle/kaggle_inference_notebook.ipynb` | Remote GPU inference and additional explorations |
+| `notebooks/09_section11_metrics.ipynb` | Primary explanation-similarity metrics |
+| `notebooks/11_seed_dataset_creation.ipynb` | Repeated-seed dataset |
+| `notebooks/11_task3_grounding_check.ipynb` | Heuristic grounding checks |
+| `notebooks/12_task4_road_experiment.ipynb` | ROAD extraction and sampling |
+| `src/perturbations.py` | Limited independent helper functions (not experimental parity) |
+| `requirements.txt` | Pinned Python dependencies |
 
----
+The repository includes additional scratch notebooks. Some listed modules in the former README (`src/generation.py`, `src/evaluation.py` and `src/visualization.py`) **do not exist**; they have been removed from the claimed repository structure.
 
-## Models
+## Getting started
 
-| Model | Role | Parameters |
-|---|---|---|
-| SecureBERT (LoRA) | Classifier | 125M |
-| Qwen2.5-1.5B-Instruct | Primary explainer | 1.5B |
-| Mistral-7B-Instruct-v0.2 | Comparison explainer | 7B |
-| TinyLlama-1.1B | Negative baseline | 1.1B |
+```bash
+git clone https://github.com/DeepakPatnaik07/llm-can-ids-robustness.git
+cd llm-can-ids-robustness
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+jupyter lab
+```
 
----
+Refer to [REPRODUCIBILITY.md](REPRODUCIBILITY.md) before executing notebooks. They include legacy absolute paths and require datasets, checkpoints and intermediate Parquet files **not stored in Git**. Remote GPU steps reference a [Kaggle dataset](https://www.kaggle.com/datasets/deepakpatnaik07/icidea-llm-ids-benchmark); its present availability, completeness and licensing are **not verified here**. Full end-to-end reproduction is not yet turnkey.
 
-## Repository Structure
+## Research priorities
 
-    llm-can-ids-robustness/
-        README.md
-        requirements.txt
-        .gitignore
-        notebooks/
-            00_environment_check.ipynb
-            01_section3_dataset_loading.ipynb
-            02_section4_schema_standardization.ipynb
-            03_section5_data_cleaning.ipynb
-            04_section6_window_generation.ipynb
-            05_section7_telemetry_text.ipynb
-            06_section8_benchmark.ipynb
-            07_section9a_securebert_finetune.ipynb
-            08_section10_perturbations.ipynb
-            09_section11_metrics.ipynb
-            10_task1_shap_baseline.ipynb
-            11_seed_dataset_creation.ipynb
-            11_task3_grounding_check.ipynb
-            12_task4_road_experiment.ipynb
-        kaggle/
-            kaggle_inference_notebook.ipynb
-        src/
-            perturbations.py
-            generation.py
-            evaluation.py
-            visualization.py
+1. Publish a versioned artifact manifest and independent rerun of the main P1–P5 analysis.
+2. Rerun SecureBERT on modified telemetry and explicitly separate **classifier stability** from **LLM answer stability**.
+3. Quantify independence/overlap, run grouped statistical analyses and confidence intervals.
+4. Develop expert-reviewed factual-grounding and analyst-impact metrics.
+5. Validate P6, Mistral and ROAD findings with explicit denominators, error handling and supporting artifacts.
 
----
+## Attribution and publication status
 
-## Compute
-
-- **Local:** M2 MacBook Air (8GB, MPS) — analysis, SHAP, figures
-- **GPU inference:** Kaggle (Tesla T4 x2) — LLM generation
-- **Kaggle dataset:** [deepakpatnaik07/icidea-llm-ids-benchmark](https://www.kaggle.com/datasets/deepakpatnaik07/icidea-llm-ids-benchmark)
-
----
-
-## Results Summary
-
-### HCRL Qwen — Per-Perturbation Cosine Similarity
-
-| Perturbation | Mean | 95% CI | Cohen's d |
-|---|---|---|---|
-| P1 Payload | 0.738 | [0.722, 0.753] | 2.155 large |
-| P2 Insertion | 0.785 | [0.776, 0.794] | — |
-| P3 Reorder | 0.801 | [0.793, 0.808] | — |
-| P4 Confidence | 0.776 | [0.766, 0.786] | — |
-| P5 Steering | 0.753 | [0.741, 0.766] | 2.543 large |
-
-### P6 False Context — Classification Accuracy
-
-| Model | Dataset | DOS accuracy | Other classes |
-|---|---|---|---|
-| Qwen-1.5B | HCRL | Output collapse | 96-100% |
-| Mistral-7B | HCRL | 0% reclassified as NORMAL | 96-100% |
-| Qwen-1.5B | ROAD | 20% overall | — |
-| Mistral-7B | ROAD | 40% overall | — |
-
----
-
-## Citation
-
-    @inproceedings{patnaik2026llm,
-      title={LLM-based CAN Bus IDS Explanation Robustness Pipeline},
-      author={Patnaik, Deepak},
-      booktitle={IEEE ICIDeA 2026},
-      year={2026}
-    }
+**Unpublished work in progress.** This repository should not be cited as a published IEEE ICIDeA 2026 proceeding without verified acceptance. Cite the repository URL and commit for any reuse. The original repository credited **Swagat Das** as a mentor; this credit is preserved here, without implying conference acceptance or formal institutional endorsement.
